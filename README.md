@@ -6,6 +6,7 @@ No cloud processing is required; everything runs locally on your machine.
 
 ## Features
 - **Deep Learning Estimation:** Uses L2CS-Net for high-accuracy gaze pitch and yaw extraction.
+- **Web UI Dashboard:** A sleek, non-scrolling, gaze-interactive web dashboard with magnetic snap effects and a modern glassmorphic aesthetic.
 - **Auto-Calibration:** Calibrates the system using an intuitive GUI by tracking your gaze on on-screen targets.
 - **Smart Filtering:** Utilizes Median and One-Euro filters to eliminate cursor jitter, distinguishing between steady gazes and quick glances.
 - **Passive Recalibration:** Accuracy drifts up as you use it. Every confirmed action slightly nudges the calibration.
@@ -61,10 +62,12 @@ When you first run the app, you will need to calibrate it.
   - `Q`: Quit
 
 ### 2. Normal Operation Phase
-Once calibrated, the screen will switch to the dashboard interface. Your gaze will act as the mouse cursor.
-- **SPACEBAR**: Confirm selection (Acts like a steering wheel thumb-button / click).
-- `R`: Recalibrate (if you feel accuracy drifting).
-- `Q`: Quit the application.
+Once calibrated, the Python server will track your gaze and transmit it via WebSockets.
+- Open `web_ui/index.html` in your web browser to view the interactive dashboard.
+- The web interface features magnetic buttons. Your gaze will act as the mouse cursor.
+- **SPACEBAR (in Python window)**: Confirm selection (Acts like a steering wheel thumb-button / click).
+- `R (in Python window)`: Recalibrate (if you feel accuracy drifting).
+- `Q (in Python window)`: Quit the application.
 
 ## Troubleshooting
 - **Face/eyes not detected:** Ensure you are in a well-lit room and facing the webcam.

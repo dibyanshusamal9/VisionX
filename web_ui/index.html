@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VisionX Gaze Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="background-animation"></div>
+
+    <div class="dashboard">
+        <header class="header panel">
+            <h1>VisionX <span>Dashboard</span></h1>
+            <div class="status-indicators">
+                <div id="ws-status" class="status-dot disconnected"></div>
+                <span>Gaze Connection</span>
+            </div>
+        </header>
+
+        <div class="main-content">
+            <div class="side-panel">
+                <div class="panel widget">
+                    <h3>Climate</h3>
+                    <div class="value-display" id="temp-display">21&deg;C</div>
+                    <div class="controls">
+                        <button class="btn gaze-btn" data-action="temp_down">Temp &minus;</button>
+                        <button class="btn gaze-btn" data-action="temp_up">Temp &plus;</button>
+                    </div>
+                </div>
+
+                <div class="panel widget">
+                    <h3>Media</h3>
+                    <div class="value-display small" id="media-display">Bluetooth Audio</div>
+                    <div class="controls">
+                        <button class="btn gaze-btn" data-action="vol_down">Vol &minus;</button>
+                        <button class="btn gaze-btn" data-action="vol_up">Vol &plus;</button>
+                    </div>
+                    <div class="value-sub" id="vol-display">Vol: 40%</div>
+                    <button class="btn gaze-btn full-width mt-1" data-action="toggle_media">Switch Media</button>
+                </div>
+            </div>
+
+            <div class="center-panel">
+                <div class="panel widget large">
+                    <h3>Navigation</h3>
+                    <div class="nav-status" id="nav-display">No destination set</div>
+                    <div class="controls row">
+                        <button class="btn gaze-btn" data-action="nav_home">Home</button>
+                        <button class="btn gaze-btn" data-action="nav_work">Work</button>
+                    </div>
+                </div>
+
+                <div class="panel widget">
+                    <h3>Phone</h3>
+                    <div class="call-status" id="call-display">Idle</div>
+                    <button class="btn gaze-btn call-btn" data-action="answer_call">Answer Call</button>
+                </div>
+            </div>
+        </div>
+        
+        <div class="feedback-toast" id="feedback-toast">Action Confirmed</div>
+    </div>
+
+    <!-- The cursor representing the user's gaze -->
+    <div id="gaze-cursor" class="gaze-cursor">
+        <div class="gaze-ring"></div>
+        <div class="gaze-dot"></div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>

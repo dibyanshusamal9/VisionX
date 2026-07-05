@@ -47,7 +47,10 @@ class GazeTracker:
         Returns (features, eye_centers_px, face_found, blink, quality).
         """
         # Process the frame with L2CS-Net
-        results = self.gaze_pipeline.step(frame_bgr)
+        try:
+            results = self.gaze_pipeline.step(frame_bgr)
+        except ValueError:
+            return None, None, False, False, None
 
         # Check if a face was detected
         if results.pitch.shape[0] == 0:

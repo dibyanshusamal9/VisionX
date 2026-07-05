@@ -41,11 +41,60 @@ What changed in this pass (see the individual files for the why in detail):
 import time
 import cv2
 import numpy as np
+import asyncio
+import websockets
+import json
+import threading
 
 from gaze_tracker import GazeTracker
 from calibration import GazeCalibrator
-from dashboard_ui import Dashboard
+# from dashboard_ui import Dashboard # No longer needed, using web UI
 from filters import OneEuroFilter, MedianFilter
+
+# --- Websocket Server Setup ---
+connected_clients = set()
+ws_loop = None
+
+web_cursor_xy = None
+
+async def ws_handler(websocket):
+    global web_cursor_xy
+    connected_clients.add(websocket)
+    try:
+        async for message in websocket:
+            try:
+                data = json.loads(message)
+                if data.get("type") == "sync_cursor":
+                    web_cursor_xy = (data.get("x", 0), data.get("y", 0))
+            except Exception:
+                pass
+    finally:
+        connected_clients.remove(websocket)
+
+async def serve_forever():
+    async with websockets.serve(ws_handler, "localhost", 8765):
+        await asyncio.Future()  # run forever
+
+def start_ws_server():
+    global ws_loop
+    ws_loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(ws_loop)
+    ws_loop.run_until_complete(serve_forever())
+
+ws_thread = threading.Thread(target=start_ws_server, daemon=True)
+ws_thread.start()
+
+def broadcast_ws(message_dict):
+    if not connected_clients or ws_loop is None:
+        return
+    msg = json.dumps(message_dict)
+    
+    async def send_to_all():
+        if connected_clients:
+            await asyncio.gather(*(ws.send(msg) for ws in connected_clients), return_exceptions=True)
+            
+    asyncio.run_coroutine_threadsafe(send_to_all(), ws_loop)
+# ------------------------------
 
 CAM_INDEX = 0
 
@@ -199,7 +248,7 @@ def main():
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
 
     tracker = GazeTracker()
-    dashboard = Dashboard(dash_w, dash_h)
+    # dashboard = Dashboard(dash_w, dash_h) # Replaced with web UI
 
     calibrator = run_calibration(cap, tracker, dash_w, dash_h)
     if calibrator is None:
@@ -240,8 +289,7 @@ def main():
         feats, _, found, blink, quality = tracker.process(frame)
         trusted = found and quality is not None and quality["trusted"]
         cursor_xy = None
-        hovered_btn = None
-        smoothed_feat = None  # only set this frame if we actually computed a fresh one
+        smoothed_feat = None
 
         if trusted and calibrator.calibrated:
             despiked = feat_median.filter(feats)
@@ -253,13 +301,10 @@ def main():
                 smoothed_xy = cursor_filter.filter([px, py])
                 cursor_xy = (float(smoothed_xy[0]), float(smoothed_xy[1]))
                 last_cursor_xy = cursor_xy
-                hovered_btn = dashboard.hit_test(cursor_xy[0], cursor_xy[1])
+                broadcast_ws({"type": "cursor", "x": cursor_xy[0] / dash_w, "y": cursor_xy[1] / dash_h})
         elif last_cursor_xy is not None:
-            # Hold the cursor in place through a blink / untrusted frame
-            # instead of letting it snap to a garbage position -- avoids
-            # both visible jumps and misfires on SPACE right after.
             cursor_xy = last_cursor_xy
-            hovered_btn = dashboard.hit_test(cursor_xy[0], cursor_xy[1])
+            broadcast_ws({"type": "cursor", "x": cursor_xy[0] / dash_w, "y": cursor_xy[1] / dash_h})
 
         now = time.time()
         dt = now - prev_time
@@ -267,8 +312,29 @@ def main():
         if dt > 0:
             fps = 0.9 * fps + 0.1 * (1.0 / dt)
 
-        canvas = dashboard.draw(cursor_xy=cursor_xy, hovered_btn=hovered_btn,
-                                 fps=fps, calibrated=calibrator.calibrated)
+        # Simplified server canvas
+        canvas = np.full((dash_h, dash_w, 3), (30, 24, 20), dtype="uint8")
+        cv2.putText(canvas, "GAZE TRACKER SERVER RUNNING", (50, 60),
+                    cv2.FONT_HERSHEY_SIMPLEX, 1.1, (0, 255, 0), 2, cv2.LINE_AA)
+        cv2.putText(canvas, "Open web_ui/index.html in your browser.", (50, 110),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (200, 220, 255), 2, cv2.LINE_AA)
+        
+        if cursor_xy:
+            cx, cy = int(cursor_xy[0]), int(cursor_xy[1])
+            # Draw raw Python cursor (yellow, faint)
+            cv2.circle(canvas, (cx, cy), 14, (0, 255, 255), 1)
+            cv2.circle(canvas, (cx, cy), 3, (0, 255, 255), -1)
+
+        if web_cursor_xy:
+            wcx, wcy = int(web_cursor_xy[0] * dash_w), int(web_cursor_xy[1] * dash_h)
+            # Draw synchronized Web cursor (blue, thick) which shows the magnetic snap
+            cv2.circle(canvas, (wcx, wcy), 16, (255, 100, 50), 3)
+            cv2.circle(canvas, (wcx, wcy), 4, (255, 100, 50), -1)
+
+        cv2.putText(canvas, f"FPS: {fps:.1f}", (dash_w - 160, 30),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (180, 180, 180), 1, cv2.LINE_AA)
+        cv2.putText(canvas, "SPACE = click   |   R = recalibrate   |   Q = quit",
+                    (50, dash_h - 30), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (160, 160, 160), 1, cv2.LINE_AA)
 
         if not found:
             cv2.putText(canvas, "Face/eyes not detected", (dash_w // 2 - 150, dash_h // 2),
@@ -288,18 +354,8 @@ def main():
             feat_filter.reset()
             cursor_filter.reset()
             last_cursor_xy = None
-        elif key == 32:  # SPACE == the "steering-wheel thumb-click" for this laptop demo
-            if hovered_btn is not None:
-                hovered_btn.trigger(dashboard.state)
-                # Passive recalibration: the driver was presumably looking
-                # at what they just clicked, so feed this as a weak extra
-                # calibration sample. Accuracy improves the more the
-                # dashboard actually gets used instead of only ever
-                # degrading from the initial calibration.
-                if smoothed_feat is not None:
-                    center = (hovered_btn.x + hovered_btn.w / 2, hovered_btn.y + hovered_btn.h / 2)
-                    calibrator.add_sample(smoothed_feat, center)
-                    calibrator.fit()
+        elif key == 32:  # SPACE
+            broadcast_ws({"type": "click"})
 
     tracker.close()
     cap.release()
